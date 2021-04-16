@@ -24,7 +24,7 @@ const run = async () => {
         {values},
         {
             xLabel: "Horsepower",
-            yLablel: "MPG",
+            yLabel: "MPG",
             height: 300
         }
     );
@@ -40,18 +40,20 @@ const run = async () => {
     // train the model
     await trainModel(model, inputs, labels);
     console.log("Done Training");
+
+    testModel(model, data, tensorData);
 }
 
 const createModel = () => {
-    // instantiate a tf model
+    //instantiate a tf model
     // the model is sequential becuase its input flows straight to its output
     const model = tf.sequential();
 
     // define an input layer
-    model.add(tf.layers.dense({inputShape: [1], units: 1, useBias: true}));
+    model.add(tf.layers.dense({inputShape: [1], units: 50}));
 
     // define the output layer
-    model.add(tf.layers.dense({units: 1, useBias: true}));
+    model.add(tf.layers.dense({units: 1, activation: 'sigmoid'}));
 
     return model;
 }
@@ -97,7 +99,7 @@ const trainModel = async (model, inputs, labels) => {
     });
 
     const batchSize = 32;
-    const epochs = 50;
+    const epochs = 100;
 
     return await model.fit(inputs, labels, {
         batchSize,
@@ -111,6 +113,48 @@ const trainModel = async (model, inputs, labels) => {
     });
 }
 
-
+const testModel = (model, inputData, normalizationData) => {
+  const {inputMax, inputMin, labelMin, labelMax} = normalizationData;  
+  
+  // Generate predictions for a uniform range of numbers between 0 and 1;
+  // We un-normalize the data by doing the inverse of the min-max scaling 
+  // that we did earlier.
+  const [xs, preds] = tf.tidy(() => {
+    
+    const xs = tf.linspace(0, 1, 100);      
+    const preds = model.predict(xs.reshape([100, 1]));      
+    
+    const unNormXs = xs
+      .mul(inputMax.sub(inputMin))
+      .add(inputMin);
+    
+    const unNormPreds = preds
+      .mul(labelMax.sub(labelMin))
+      .add(labelMin);
+    
+    // Un-normalize the data
+    return [unNormXs.dataSync(), unNormPreds.dataSync()];
+  });
+  
+ 
+  const predictedPoints = Array.from(xs).map((val, i) => {
+    return {x: val, y: preds[i]}
+  });
+  
+  const originalPoints = inputData.map(d => ({
+    x: d.horsepower, y: d.mpg,
+  }));
+  
+  
+  tfvis.render.scatterplot(
+    {name: 'Model Predictions vs Original Data'}, 
+    {values: [originalPoints, predictedPoints], series: ['original', 'predicted']}, 
+    {
+      xLabel: 'Horsepower',
+      yLabel: 'MPG',
+      height: 300
+    }
+  );
+}
 
 document.addEventListener("DOMContentLoaded", run);
